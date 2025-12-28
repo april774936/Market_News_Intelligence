@@ -1,7 +1,7 @@
 import os
 import json
 import feedparser
-import urllib.parse  # URL 인코딩을 위한 라이브러리 추가
+import urllib.parse  # URL 인코딩을 위한 표준 라이브러리
 from datetime import datetime
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaInMemoryUpload
@@ -31,22 +31,26 @@ def collect_news():
     news_body += "="*60 + "\n\n"
 
     for q in queries:
-        # 핵심 해결 포인트: 키워드 내 공백을 URL용 문자로 변환
+        # [핵심 수정] 키워드를 URL 안전 문자열로 인코딩 (공백 -> %20 등)
         encoded_query = urllib.parse.quote(q)
-        print(f"키워드 수집 중: {q} (인코딩됨: {encoded_query})")
+        print(f"키워드 수집 중: {q}")
         
         # 인코딩된 쿼리를 URL에 삽입
         url = f"https://news.google.com/rss/search?q={encoded_query}+when:1d&hl=en-US&gl=US&ceid=US:en"
         feed = feedparser.parse(url)
         
         news_body += f"[[ TOPIC: {q} ]]\n"
-        for entry in feed.entries[:10]:
-            news_body += f"- {entry.title}\n"
-            news_body += f"  Link: {entry.link}\n"
-            news_body += f"  Date: {entry.published}\n\n"
+        # NotebookLM의 혼동을 막기 위해 상위 10개로 제한
+        if len(feed.entries) == 0:
+            news_body += "(No news found for the last 24 hours)\n\n"
+        else:
+            for entry in feed.entries[:10]:
+                news_body += f"- Title: {entry.title}\n"
+                news_body += f"  Link: {entry.link}\n"
+                news_body += f"  Date: {entry.published}\n\n"
         news_body += "-"*40 + "\n\n"
 
-    # 3. 구글 드라이브 저장
+    # 3. 구글 드라이브 저장 (사용자 지정 폴더 ID)
     FOLDER_ID = "16Bzv2-cdMw2y_0Q_MMJlkSDaV99I_okH" 
 
     file_metadata = {
@@ -58,9 +62,9 @@ def collect_news():
     
     try:
         file = drive_service.files().create(body=file_metadata, media_body=media, fields='id').execute()
-        print(f"✅ 뉴스 수집 성공! 생성된 파일 ID: {file.get('id')}")
+        print(f"✅ 성공! 파일 생성 완료: {file.get('id')}")
     except Exception as e:
-        print(f"🚨 드라이브 업로드 실패: {e}")
+        print(f"🚨 구글 드라이브 업로드 실패: {e}")
 
 if __name__ == "__main__":
     collect_news()
