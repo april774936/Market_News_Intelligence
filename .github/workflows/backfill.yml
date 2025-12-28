@@ -1,7 +1,7 @@
 name: MANUAL_BACKFILL
 
 on:
-  workflow_dispatch: # 사용자가 수동으로 실행 버튼을 누를 때 작동합니다.
+  workflow_dispatch:
 
 jobs:
   backfill_job:
@@ -17,10 +17,9 @@ jobs:
 
       - name: Install dependencies
         run: |
-          pip install feedparser gspread oauth2client
+          pip install feedparser gspread oauth2client google-api-python-client
 
       - name: Run Backfill
         env:
           GSPREAD_JSON: ${{ secrets.GSPREAD_JSON }}
-        # 실행할 파이썬 파일 이름이 news_collector.py 인지 확인하세요!
-        run: backfill_news.py
+        run: python news_collector.py
