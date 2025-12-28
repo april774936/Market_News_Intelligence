@@ -23,4 +23,4 @@ jobs:
         env:
           GSPREAD_JSON: ${{ secrets.GSPREAD_JSON }}
         # 실행할 파이썬 파일 이름이 news_collector.py 인지 확인하세요!
-        run: python news_collector.py
+        run: backfill_news.py
