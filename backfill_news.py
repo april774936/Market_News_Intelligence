@@ -1,26 +1,26 @@
-import os, json, urllib.parse, feedparser, time
-from datetime import datetime
-from googleapiclient.discovery import build
-from googleapiclient.http import MediaInMemoryUpload
+import os, json, urllib.parse, feedparser, time, gspread
 from oauth2client.service_account import ServiceAccountCredentials
 
 def main():
-    print("--- 🚀 MEGA 뉴스 수집기 가동 시작 ---")
+    print("--- 🚀 MEGA 뉴스 수집기 (시트 우회 모드) ---")
     
+    # 1. 인증 및 시트 연결
     try:
-        scope = ["https://www.googleapis.com/auth/drive.file", "https://www.googleapis.com/auth/drive"]
+        scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
         creds_json = json.loads(os.environ.get('GSPREAD_JSON'))
         creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_json, scope)
-        drive_service = build('drive', 'v3', credentials=creds)
-        print("✅ 구글 드라이브 인증 성공")
+        gc = gspread.authorize(creds)
+        
+        # ⚠️ 중요: 구글 드라이브에서 'MarketNewsDB'라는 이름의 구글 시트를 미리 하나 만들고
+        # 서비스 계정 이메일을 '편집자'로 초대해두어야 합니다.
+        sh = gc.open("MarketNewsDB").sheet1
+        print("✅ 구글 시트 연결 성공")
     except Exception as e:
-        print(f"🚨 인증 오류: {e}")
+        print(f"🚨 인증/시트 연결 오류: {e}")
         return
 
-    FOLDER_ID = "1-aITCmfSiRZ1eNLnqvt071PyyqA9DjbT"
-    
     queries = ["Nasdaq", "S&P 500", "Nvidia", "FOMC", "Fed", "Inflation", "Trump", "Bitcoin", "Gold", "Oil"]
-    all_data = []
+    rows = []
 
     for q in queries:
         print(f"📡 {q} 수집 중...", end=" ")
@@ -31,46 +31,22 @@ def main():
             if feed.entries:
                 print(f"성공 ({len(feed.entries)}개)")
                 for e in feed.entries:
-                    all_data.append(f"{e.published} | {q} | {e.title}")
-            else:
-                print("데이터 없음")
+                    rows.append([e.published, q, e.title])
             time.sleep(0.3)
-        except:
-            print("에러")
+        except: print("에러")
 
-    if not all_data:
-        print("🚨 수집된 데이터가 없습니다.")
+    if not rows:
+        print("🚨 수집 데이터 없음")
         return
 
-    print(f"📦 총 {len(all_data)}개 업로드 시도 (용량 우회 모드)...")
-    
-    # 중복 제거 및 정렬
-    all_data = list(set(all_data))
-    all_data.sort()
+    # 시트에 한꺼번에 업데이트 (append_rows는 용량 문제에서 비교적 자유롭습니다)
+    try:
+        sh.append_rows(rows)
+        print(f"📤 {len(rows)}개 데이터를 구글 시트에 기록 완료!")
+    except Exception as e:
+        print(f"❌ 시트 기록 실패: {e}")
 
-    chunk_size = 150
-    for i in range(0, len(all_data), chunk_size):
-        chunk = all_data[i:i + chunk_size]
-        content = "DATE | CATEGORY | TITLE\n" + "="*50 + "\n" + "\n".join(chunk)
-        file_name = f"MEGA_Archive_Part_{ (i//chunk_size)+1 :02d}.txt"
-        
-        # meta 설정: 사용자님을 소유자로 지정할 수 없으므로, 폴더의 권한을 상속받도록 처리
-        meta = {'name': file_name, 'parents': [FOLDER_ID]}
-        media = MediaInMemoryUpload(content.encode('utf-8'), mimetype='text/plain')
-        
-        try:
-            # 필수 변경: fields='id' 추가 및 업로드 방식 최적화
-            drive_service.files().create(
-                body=meta,
-                media_body=media,
-                fields='id',
-                supportsAllDrives=True
-            ).execute()
-            print(f"📤 {file_name} 업로드 완료!")
-        except Exception as e:
-            print(f"❌ {file_name} 실패: {e}")
-
-    print("--- ✨ 모든 작업 종료 ---")
+    print("--- ✨ 작업 종료 ---")
 
 if __name__ == "__main__":
     main()
