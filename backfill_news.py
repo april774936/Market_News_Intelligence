@@ -5,9 +5,9 @@ from googleapiclient.http import MediaInMemoryUpload
 from oauth2client.service_account import ServiceAccountCredentials
 
 def main():
-    print("--- 🚀 뉴스 수집기 가동 시작 ---")
+    # 이 문구가 로그에 반드시 찍혀야 합니다.
+    print("--- 🚀 MEGA 뉴스 수집기 가동 시작 ---")
     
-    # 1. 드라이브 인증
     try:
         scope = ["https://www.googleapis.com/auth/drive.file"]
         creds_json = json.loads(os.environ.get('GSPREAD_JSON'))
@@ -15,53 +15,51 @@ def main():
         drive_service = build('drive', 'v3', credentials=creds)
         print("✅ 구글 드라이브 인증 성공")
     except Exception as e:
-        print(f"🚨 인증 오류 발생: {e}")
+        print(f"🚨 인증 오류: {e}")
         return
 
     FOLDER_ID = "1-aITCmfSiRZ1eNLnqvt071PyyqA9DjbT"
     
-    # 2. 핵심 키워드 (검색 성공률을 높이기 위해 단순화)
-    queries = ["Nasdaq", "S&P 500", "Nvidia", "FOMC", "Fed", "Inflation", "Trump", "Bitcoin"]
+    # 수집 성공률을 높이기 위한 핵심 쿼리 리스트
+    queries = ["Nasdaq", "S&P 500", "Nvidia", "FOMC", "Fed", "Inflation", "Trump", "Bitcoin", "Gold", "Oil"]
     all_data = []
 
     for q in queries:
         print(f"📡 {q} 수집 중...", end=" ")
         try:
             enc = urllib.parse.quote(q)
-            # 안전하게 최근 7일치 요청
+            # 안정적인 수집을 위해 7일치 데이터 요청
             url = f"https://news.google.com/rss/search?q={enc}+when:7d&hl=en-US&gl=US&ceid=US:en"
             feed = feedparser.parse(url)
             
             if feed.entries:
-                print(f"OK ({len(feed.entries)}개)")
+                print(f"성공 ({len(feed.entries)}개)")
                 for e in feed.entries:
                     all_data.append(f"{e.published} | {q} | {e.title}")
             else:
                 print("데이터 없음")
-            time.sleep(0.5)
-        except:
-            print("에러")
+            time.sleep(0.3)
+        except Exception as e:
+            print(f"에러: {e}")
 
     if not all_data:
-        print("🚨 수집된 데이터가 최종 0건입니다.")
+        print("🚨 수집된 데이터가 0건입니다. 종료합니다.")
         return
 
-    # 3. 데이터 분할 업로드
-    print(f"📦 총 {len(all_data)}개 데이터 업로드 시작...")
+    print(f"📦 총 {len(all_data)}개 업로드 시작...")
     chunk_size = 150
     for i in range(0, len(all_data), chunk_size):
         chunk = all_data[i:i + chunk_size]
-        content = "DATE | CATEGORY | TITLE\n" + "-"*40 + "\n" + "\n".join(chunk)
+        content = "DATE | CATEGORY | TITLE\n" + "="*40 + "\n" + "\n".join(chunk)
         
-        file_name = f"Backfill_News_Part_{ (i//chunk_size)+1 :02d}.txt"
+        file_name = f"MEGA_Archive_Part_{ (i//chunk_size)+1 :02d}.txt"
         meta = {'name': file_name, 'parents': [FOLDER_ID]}
         media = MediaInMemoryUpload(content.encode('utf-8'), mimetype='text/plain')
         
         drive_service.files().create(body=meta, media_body=media).execute()
-        print(f"📤 {file_name} 완료")
+        print(f"📤 {file_name} 업로드 완료")
 
-    print("--- ✨ 모든 작업 종료 ---")
+    print("--- ✨ 모든 작업이 완벽하게 종료되었습니다 ---")
 
-# 이 부분이 반드시 있어야 코드가 실행됩니다!
 if __name__ == "__main__":
     main()
