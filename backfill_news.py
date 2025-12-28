@@ -1,48 +1,54 @@
 import yfinance as yf
-import pandas as pd
-import os, json
-from datetime import datetime, timedelta
+import os, json, urllib.parse
+from datetime import datetime
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaInMemoryUpload
 from oauth2client.service_account import ServiceAccountCredentials
 
-def news_backfill():
-    # 1. 인증 및 드라이브 설정
+def run_backfill():
+    # 1. 구글 드라이브 인증
     scope = ["https://www.googleapis.com/auth/drive.file"]
     creds_json = json.loads(os.environ.get('GSPREAD_JSON'))
     creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_json, scope)
     drive_service = build('drive', 'v3', credentials=creds)
-    
-    # [과거 데이터용 폴더 ID] - 새로 만드시는 것을 추천합니다
-    BACKFILL_FOLDER_ID = "사용자님의_과거데이터_폴더_ID"
 
-    # 2. 수집 대상 티커 (지수 및 주요 종목)
-    tickers = ["^NDX", "^GSPC", "^DJI", "NVDA", "TSLA", "AAPL", "MSFT"]
-    all_news = []
+    # 알려주신 과거 데이터용 폴더 ID
+    BACKFILL_FOLDER_ID = "1-aITCmfSiRZ1eNLnqvt071PyyqA9DjbT"
 
-    print("🚀 과거 뉴스 헤드라인 수집 시작...")
+    # 2. 수집 대상 (지수, 선물, 주요 섹터)
+    tickers = ["^NDX", "^GSPC", "^DJI", "NVDA", "AAPL", "TSLA", "GC=F", "CL=F"]
+    all_headlines = []
+
+    print("🔍 과거 뉴스 헤드라인 수집 중...")
     for t in tickers:
-        ticker_obj = yf.Ticker(t)
-        news = ticker_obj.news
-        for n in news:
-            dt = datetime.fromtimestamp(n['providerPublishTime']).strftime('%Y-%m-%d %H:%M')
-            title = n['title']
-            publisher = n.get('publisher', 'Unknown')
-            # 데이터베이스 형태의 한 줄 텍스트 생성
-            all_news.append(f"{dt} | {t} | {publisher} | {title}")
+        try:
+            ticker_obj = yf.Ticker(t)
+            news_list = ticker_obj.news
+            for n in news_list:
+                dt = datetime.fromtimestamp(n['providerPublishTime']).strftime('%Y-%m-%d %H:%M')
+                title = n['title']
+                # 데이터베이스 포맷: [날짜] | [종목] | [헤드라인]
+                all_headlines.append(f"{dt} | {t} | {title}")
+        except: continue
 
-    # 3. 데이터 분할 및 저장 (NotebookLM 가독성 최적화)
-    # 200줄마다 하나의 파일로 저장
-    chunk_size = 200
-    for i in range(0, len(all_news), chunk_size):
-        chunk = all_news[i:i + chunk_size]
-        content = "\n".join(chunk)
-        file_name = f"Historical_News_Part_{i//chunk_size + 1}.txt"
-        
+    # 3. 데이터 정렬 및 분할 저장 (NotebookLM 용량 및 가독성 고려)
+    all_headlines.sort() # 날짜순 정렬
+    
+    chunk_size = 300 # 파일당 300줄씩 (약 15-20개 파일 생성 예상)
+    for i in range(0, len(all_headlines), chunk_size):
+        chunk = all_headlines[i:i + chunk_size]
+        file_content = "\n".join(chunk)
+        part_num = (i // chunk_size) + 1
+        file_name = f"Historical_News_DB_Part_{part_num:02d}.txt"
+
         file_metadata = {'name': file_name, 'parents': [BACKFILL_FOLDER_ID]}
-        media = MediaInMemoryUpload(content.encode('utf-8'), mimetype='text/plain')
-        drive_service.files().create(body=file_metadata, media_body=media).execute()
-        print(f"✅ {file_name} 업로드 완료")
+        media = MediaInMemoryUpload(file_content.encode('utf-8'), mimetype='text/plain')
+        
+        try:
+            drive_service.files().create(body=file_metadata, media_body=media).execute()
+            print(f"✅ {file_name} 업로드 완료")
+        except Exception as e:
+            print(f"🚨 {file_name} 실패: {e}")
 
 if __name__ == "__main__":
-    news_backfill()
+    run_backfill()
