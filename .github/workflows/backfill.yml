@@ -1,7 +1,7 @@
 name: MANUAL_BACKFILL
 
 on:
-  workflow_dispatch: # 이 구문이 있어야 버튼이 생깁니다!
+  workflow_dispatch:
 
 jobs:
   backfill_job:
@@ -17,7 +17,7 @@ jobs:
 
       - name: Install dependencies
         run: |
-          pip install yfinance google-api-python-client oauth2client
+          pip install feedparser google-api-python-client oauth2client
 
       - name: Run Backfill
         env:
