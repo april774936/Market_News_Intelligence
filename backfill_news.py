@@ -4,81 +4,64 @@ from googleapiclient.discovery import build
 from googleapiclient.http import MediaInMemoryUpload
 from oauth2client.service_account import ServiceAccountCredentials
 
-def run_mega_backfill():
-    print("🎬 프로젝트 시작: 인증 절차 진행 중...")
-    scope = ["https://www.googleapis.com/auth/drive.file"]
+def main():
+    print("--- 🚀 뉴스 수집기 가동 시작 ---")
     
+    # 1. 드라이브 인증
     try:
+        scope = ["https://www.googleapis.com/auth/drive.file"]
         creds_json = json.loads(os.environ.get('GSPREAD_JSON'))
         creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_json, scope)
         drive_service = build('drive', 'v3', credentials=creds)
-        print("🔑 구글 드라이브 인증 성공")
+        print("✅ 구글 드라이브 인증 성공")
     except Exception as e:
-        print(f"🚨 인증 실패: {e}")
+        print(f"🚨 인증 오류 발생: {e}")
         return
 
-    BACKFILL_FOLDER_ID = "1-aITCmfSiRZ1eNLnqvt071PyyqA9DjbT"
-
-    # 검색 쿼리를 단순화하여 성공률을 높입니다.
-    search_queries = [
-        "Nasdaq", "S&P 500", "Federal Reserve", "Nvidia", "Tesla", 
-        "Apple", "Inflation", "Interest Rate", "Bitcoin", "Gold"
-    ]
+    FOLDER_ID = "1-aITCmfSiRZ1eNLnqvt071PyyqA9DjbT"
     
-    all_headlines = []
+    # 2. 핵심 키워드 (검색 성공률을 높이기 위해 단순화)
+    queries = ["Nasdaq", "S&P 500", "Nvidia", "FOMC", "Fed", "Inflation", "Trump", "Bitcoin"]
+    all_data = []
 
-    print(f"🚀 총 {len(search_queries)}개 테마 수집 시작...")
-    
-    for q in search_queries:
+    for q in queries:
+        print(f"📡 {q} 수집 중...", end=" ")
         try:
-            # 주소 구성을 더 단순하게 변경 (when:30d -> when:7d 로 안정성 확보)
-            encoded_query = urllib.parse.quote(q)
-            url = f"https://news.google.com/rss/search?q={encoded_query}+when:7d&hl=en-US&gl=US&ceid=US:en"
-            
-            print(f"📡 요청 중: {q}...", end=" ")
+            enc = urllib.parse.quote(q)
+            # 안전하게 최근 7일치 요청
+            url = f"https://news.google.com/rss/search?q={enc}+when:7d&hl=en-US&gl=US&ceid=US:en"
             feed = feedparser.parse(url)
             
-            if not feed.entries:
-                print("❌ 결과 없음")
-                continue
-                
-            count = len(feed.entries)
-            print(f"✅ {count}개 발견")
-            
-            for entry in feed.entries:
-                # 데이터 정규화: [날짜] | [키워드] | [제목]
-                clean_title = entry.title.replace('|', '-') # 구분자 중복 방지
-                all_headlines.append(f"{entry.published} | {q} | {clean_title}")
-            
-            time.sleep(1) # 차단 방지
-        except Exception as e:
-            print(f"⚠️ {q} 에러: {e}")
+            if feed.entries:
+                print(f"OK ({len(feed.entries)}개)")
+                for e in feed.entries:
+                    all_data.append(f"{e.published} | {q} | {e.title}")
+            else:
+                print("데이터 없음")
+            time.sleep(0.5)
+        except:
+            print("에러")
 
-    if not all_headlines:
-        print("🚨 수집된 데이터가 최종적으로 0건입니다. RSS 접속 환경을 확인해야 합니다.")
+    if not all_data:
+        print("🚨 수집된 데이터가 최종 0건입니다.")
         return
 
-    # 중복 제거 및 정렬
-    all_headlines = list(set(all_headlines))
-    all_headlines.sort()
-    print(f"🔥 총 {len(all_headlines)}개의 고유 헤드라인 확보!")
-
-    # 데이터 저장
-    chunk_size = 150 
-    for i in range(0, len(all_headlines), chunk_size):
-        chunk = all_headlines[i:i + chunk_size]
-        file_content = "DATE | CATEGORY | HEADLINE\n" + "="*60 + "\n"
-        file_content += "\n".join(chunk)
+    # 3. 데이터 분할 업로드
+    print(f"📦 총 {len(all_data)}개 데이터 업로드 시작...")
+    chunk_size = 150
+    for i in range(0, len(all_data), chunk_size):
+        chunk = all_data[i:i + chunk_size]
+        content = "DATE | CATEGORY | TITLE\n" + "-"*40 + "\n" + "\n".join(chunk)
         
-        file_name = f"MEGA_Archive_Part_{ (i//chunk_size)+1 :02d}.txt"
-        file_metadata = {'name': file_name, 'parents': [BACKFILL_FOLDER_ID]}
-        media = MediaInMemoryUpload(file_content.encode('utf-8'), mimetype='text/plain')
+        file_name = f"Backfill_News_Part_{ (i//chunk_size)+1 :02d}.txt"
+        meta = {'name': file_name, 'parents': [FOLDER_ID]}
+        media = MediaInMemoryUpload(content.encode('utf-8'), mimetype='text/plain')
         
-        try:
-            drive_service.files().create(body=file_metadata, media_body=media).execute()
-            print(f"📤 {file_name} 업로드 완료")
-        except Exception as e:
-            print(f"❌ {file_name} 업로드 실패: {e}")
+        drive_service.files().create(body=meta, media_body=media).execute()
+        print(f"📤 {file_name} 완료")
 
+    print("--- ✨ 모든 작업 종료 ---")
+
+# 이 부분이 반드시 있어야 코드가 실행됩니다!
 if __name__ == "__main__":
-    run_mega_backfill()
+    main()
