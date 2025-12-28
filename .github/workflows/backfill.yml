@@ -1,10 +1,12 @@
-name: MANUAL_BACKFILL
+name: AUTO_MARKET_COLLECTOR
 
 on:
-  workflow_dispatch:
+  schedule:
+    - cron: '0 * * * *'  # 매 시간 0분(정각)에 실행
+  workflow_dispatch:      # 수동 버튼도 유지
 
 jobs:
-  backfill_job:
+  collect_job:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
@@ -17,9 +19,9 @@ jobs:
 
       - name: Install dependencies
         run: |
-          pip install feedparser gspread oauth2client google-api-python-client
+          pip install feedparser gspread oauth2client yfinance
 
-      - name: Run Backfill
+      - name: Run Collector
         env:
           GSPREAD_JSON: ${{ secrets.GSPREAD_JSON }}
         run: python news_collector.py
